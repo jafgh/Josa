@@ -1,0 +1,72 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main", "master" ] # قم بتشغيل سير العمل عند الدفع إلى main أو master
+  pull_request:
+    branches: [ "main", "master" ] # (اختياري) قم بتشغيل سير العمل عند طلبات السحب إلى main أو master
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest # استخدم أحدث عداء Ubuntu مدعوم
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.9' # اختر إصدار Python متوافق مع Buildozer و Kivy
+
+    - name: Install Buildozer and dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          git \
+          zip \
+          unzip \
+          openjdk-17-jdk \
+          autoconf \
+          autogen \
+          libtool \
+          pkg-config \
+          zlib1g-dev \
+          libncurses5-dev \
+          libffi-dev \
+          libssl-dev \
+          ccache # ccache لتسريع عمليات البناء المتكررة
+        pip install --upgrade pip
+        pip install buildozer cython==0.29.37 # قد تحتاج إلى تثبيت Cython بإصدار محدد إذا واجهت مشاكل توافق
+
+    - name: Set JAVA_HOME
+      run: |
+        echo "JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))" | tee -a $GITHUB_ENV
+        echo "PATH=$JAVA_HOME/bin:$PATH" | tee -a $GITHUB_ENV
+
+    - name: Cache Buildozer global directory
+      uses: actions/cache@v4
+      with:
+        path: ~/.buildozer
+        key: ${{ runner.os }}-buildozer-global-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-global-
+
+    # (اختياري ولكن موصى به) ذاكرة التخزين المؤقت لـ p4a لتسريع تنزيل التوزيعات
+    - name: Cache p4a dists
+      uses: actions/cache@v4
+      with:
+        path: ./.buildozer/android/platform/build-*/dists
+        key: ${{ runner.os }}-p4a-dists-${{ hashFiles('buildozer.spec') }} # تغيير المفتاح إذا تغيرت المتطلبات
+        restore-keys: |
+          ${{ runner.os }}-p4a-dists-
+
+    - name: Build with Buildozer
+      run: |
+        buildozer -v android debug # يمكنك تغيير debug إلى release إذا قمت بإعداد التوقيع
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-debug-apk # اسم القطعة الأثرية التي تم تحميلها
+        path: bin/*.apk # المسار إلى ملف APK الذي تم إنشاؤه
